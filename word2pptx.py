@@ -4,6 +4,8 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 from docx.oxml.ns import qn
 from lxml.etree import Element as OxmlElement
+from PIL import Image
+import io
 
 class Word2PPTX:
     def __init__(self, input_doc, output_ppt, template_ppt, max_leaf_count=8):
@@ -95,22 +97,8 @@ class Word2PPTX:
         return images
 
     def add_slide(self, layout_idx, title, subheadings=None, notes="", image_blob=None):
-        """添加幻灯片，使用默认文字框，图片置于底层"""
+        """添加幻灯片，图片右下对齐，高或宽为PPT的一半，保持原始质量"""
         slide = self.prs.slides.add_slide(self.prs.slide_layouts[layout_idx])
-        
-        # 先添加图片（若有），确保在底层
-        if image_blob:
-            image_path = f"slide_image_{len(self.prs.slides)-1}.png"
-            with open(image_path, "wb") as f:
-                f.write(image_blob)
-            left = top = Inches(0)
-            width = self.prs.slide_width
-            height = self.prs.slide_height
-            pic = slide.shapes.add_picture(image_path, left, top, width=width, height=height)
-            # 将图片移到最底层
-            slide.shapes._spTree.remove(pic._element)
-            slide.shapes._spTree.insert(2, pic._element)  # 插入到靠近底部的索引（2是标题和正文之后）
-            print(f"Added image as bottom-layer shape for slide {len(self.prs.slides)-1}: {image_path}")
         
         # 设置标题
         slide.shapes.title.text = title
@@ -131,6 +119,35 @@ class Word2PPTX:
                 if i > 0:
                     p.level = 0
         
+        # 处理图片：右下对齐，高或宽为PPT的一半，保持原始质量
+        if image_blob:
+            # 从字节数据加载图片，获取原始尺寸
+            img = Image.open(io.BytesIO(image_blob))
+            img_width, img_height = img.size
+            img_aspect = img_width / img_height
+            
+            # 获取PPT尺寸（单位：EMU）
+            ppt_width = self.prs.slide_width
+            ppt_height = self.prs.slide_height
+            max_width = ppt_width // 2  # PPT宽度的一半
+            max_height = ppt_height // 2  # PPT高度的一半
+            
+            # 等比缩放显示尺寸
+            if img_aspect > (max_width / max_height):  # 宽图，以宽度为基准
+                display_width = max_width
+                display_height = int(display_width / img_aspect)
+            else:  # 高图，以高度为基准
+                display_height = max_height
+                display_width = int(display_height * img_aspect)
+            
+            # 计算右下对齐位置（单位：EMU）
+            left = ppt_width - display_width
+            top = ppt_height - display_height
+            
+            # 直接从字节数据插入图片，保持原始质量
+            pic = slide.shapes.add_picture(io.BytesIO(image_blob), left, top, width=display_width, height=display_height)
+            print(f"Inserted image into slide {len(self.prs.slides)-1}: size={img_width}x{img_height}, displayed as {display_width}x{display_height}, aligned bottom-right")
+        
         if notes:
             slide.notes_slide.notes_text_frame.text = notes
         
@@ -140,12 +157,15 @@ class Word2PPTX:
         """执行Word到PPT转换"""
         # 第一页：文章标题
         title = None
-        for para in self.doc.paragraphs:
+        title_idx = -1
+        for i, para in enumerate(self.doc.paragraphs):
             if para.style.name == "Title" and para.text.strip():
                 title = para.text.strip()
+                title_idx = i
                 break
         if not title and self.doc.paragraphs and self.doc.paragraphs[0].text.strip():
             title = self.doc.paragraphs[0].text.strip()
+            title_idx = 0
         if title:
             if self.prs.slides:
                 slide = self.prs.slides[0]
@@ -162,11 +182,27 @@ class Word2PPTX:
             else:
                 self.add_slide(0, "Untitled Document")
                 print("No Title found, added 'Untitled Document' to new first slide")
+            title_idx = -1
+
+        # 收集Title和第一个Heading 1之间的文字，用于Agenda的备注
+        agenda_notes = ""
+        first_h1_idx = -1
+        for i, para in enumerate(self.doc.paragraphs):
+            if para.style.name == "Heading 1" and para.text.strip():
+                first_h1_idx = i
+                break
+        if title_idx != -1 and first_h1_idx != -1 and first_h1_idx > title_idx + 1:
+            for i in range(title_idx + 1, first_h1_idx):
+                text = self.doc.paragraphs[i].text.strip()
+                if text:
+                    agenda_notes += text + "\n"
+            if agenda_notes:
+                print(f"Collected notes for Agenda between Title and first Heading 1:\n{agenda_notes.strip()}")
 
         # 第二页：Agenda（仅Heading 1）
         toc_subheadings = []
         for para in self.doc.paragraphs:
-            if para.style.name == "Heading 1" and para.text.strip():  # 修改为只收集Heading 1
+            if para.style.name == "Heading 1" and para.text.strip():
                 toc_subheadings.append(para.text.strip())
         if toc_subheadings:
             if len(self.prs.slides) > 1:
@@ -185,9 +221,11 @@ class Word2PPTX:
                         p.text = subheading
                         if i > 0:
                             p.level = 0
+                if agenda_notes:
+                    slide.notes_slide.notes_text_frame.text = agenda_notes.strip()
                 print(f"Set Agenda with {len(toc_subheadings)} Heading 1 items to existing second slide")
             else:
-                self.add_slide(1, "Agenda", toc_subheadings)
+                self.add_slide(1, "Agenda", toc_subheadings, agenda_notes)
                 print(f"Added Agenda with {len(toc_subheadings)} Heading 1 items as new second slide")
 
         # 找到所有Heading 1的范围
@@ -236,16 +274,7 @@ class Word2PPTX:
                     if notes:
                         slide.notes_slide.notes_text_frame.text = notes
                     if images:
-                        image_path = f"slide_image_{slide_idx}.png"
-                        with open(image_path, "wb") as f:
-                            f.write(images[0])
-                        left = top = Inches(0)
-                        width = self.prs.slide_width
-                        height = self.prs.slide_height
-                        pic = slide.shapes.add_picture(image_path, left, top, width=width, height=height)
-                        slide.shapes._spTree.remove(pic._element)
-                        slide.shapes._spTree.insert(2, pic._element)
-                        print(f"Added image as bottom-layer shape for slide {slide_idx}: {image_path}")
+                        self.add_slide(1, title, subheadings, notes, images[0])  # 直接使用新逻辑
                 else:
                     self.add_slide(1, title, subheadings, notes, images[0] if images else None)
                 slide_idx += 1
@@ -279,16 +308,7 @@ class Word2PPTX:
                                 if current_notes:
                                     slide.notes_slide.notes_text_frame.text = current_notes
                                 if current_images:
-                                    image_path = f"slide_image_{slide_idx}.png"
-                                    with open(image_path, "wb") as f:
-                                        f.write(current_images[0])
-                                    left = top = Inches(0)
-                                    width = self.prs.slide_width
-                                    height = self.prs.slide_height
-                                    pic = slide.shapes.add_picture(image_path, left, top, width=width, height=height)
-                                    slide.shapes._spTree.remove(pic._element)
-                                    slide.shapes._spTree.insert(2, pic._element)
-                                    print(f"Added image as bottom-layer shape for slide {slide_idx}: {image_path}")
+                                    self.add_slide(1, title, current_subheadings, current_notes, current_images[0])
                             else:
                                 self.add_slide(1, title, current_subheadings, current_notes, current_images[0] if current_images else None)
                             slide_idx += 1
@@ -321,16 +341,7 @@ class Word2PPTX:
                                         p.level = 0
                             if current_notes:
                                 slide.notes_slide.notes_text_frame.text = current_notes
-                            image_path = f"slide_image_{slide_idx}.png"
-                            with open(image_path, "wb") as f:
-                                f.write(current_images[0])
-                            left = top = Inches(0)
-                            width = self.prs.slide_width
-                            height = self.prs.slide_height
-                            pic = slide.shapes.add_picture(image_path, left, top, width=width, height=height)
-                            slide.shapes._spTree.remove(pic._element)
-                            slide.shapes._spTree.insert(2, pic._element)
-                            print(f"Added image as bottom-layer shape for slide {slide_idx}: {image_path}")
+                            self.add_slide(1, title, current_subheadings, current_notes, current_images[0])
                         else:
                             self.add_slide(1, title, current_subheadings, current_notes, current_images[0])
                         slide_idx += 1
@@ -359,16 +370,7 @@ class Word2PPTX:
                         if current_notes:
                             slide.notes_slide.notes_text_frame.text = current_notes
                         if current_images:
-                            image_path = f"slide_image_{slide_idx}.png"
-                            with open(image_path, "wb") as f:
-                                f.write(current_images[0])
-                            left = top = Inches(0)
-                            width = self.prs.slide_width
-                            height = self.prs.slide_height
-                            pic = slide.shapes.add_picture(image_path, left, top, width=width, height=height)
-                            slide.shapes._spTree.remove(pic._element)
-                            slide.shapes._spTree.insert(2, pic._element)
-                            print(f"Added image as bottom-layer shape for slide {slide_idx}: {image_path}")
+                            self.add_slide(1, title, current_subheadings, current_notes, current_images[0])
                     else:
                         self.add_slide(1, title, current_subheadings, current_notes, current_images[0] if current_images else None)
                     slide_idx += 1
