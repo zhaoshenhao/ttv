@@ -1,0 +1,11 @@
+ref_zh_audio: "tts/F5TTS_zh.wav"
+ref_zh_text: "这周天不算太冷，最低大概零下十度。"
+ref_en_audio: "tts/F5TTS_en.wav"
+ref_en_text: "tts/F5TTS_en.txt"
+model: "F5TTS_v1_Base"
+speed: 1.0
+vocoder_name: "vocos"
+target_rms: 0.1
+remove_silence: true
+output_dir: "audio"
+tmp_dir: tmp
