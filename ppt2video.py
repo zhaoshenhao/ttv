@@ -46,15 +46,24 @@ class PPT2Video:
             slide_images.append(new_path)
         
         return slide_images
+    
+    def str_time(self, seconds):
+        td = timedelta(seconds=seconds)
+        h = td.seconds//3600
+        m = (td.seconds//60)%60
+        s = seconds = td.seconds - h*3600 - m*60
+        ms = int((seconds % 1) * 1000)
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
     def generate_srt_time(self, start_time, duration):
-        """生成 SRT 文件的时间格式"""
-        start = timedelta(seconds=start_time)
-        end = timedelta(seconds=start_time + duration)
-        start_str = str(start)[2:11].replace('.', ',')  # HH:MM:SS,mmm
-        end_str = str(end)[2:11].replace('.', ',')
+        """生成 SRT 文件的时间格式，确保始终为 HH:MM:SS,mmm --> HH:MM:SS,mmm"""
+        # 计算开始和结束时间
+        start_seconds = start_time
+        end_seconds = start_time + duration
+        start_str = self.str_time(start_seconds)
+        end_str = self.str_time(end_seconds)
         return f"{start_str} --> {end_str}"
-
+    
     def convert(self):
         """将PPT和音频合成为1080p视频，并生成字幕文件"""
         slide_images = self.export_slides_to_images()
