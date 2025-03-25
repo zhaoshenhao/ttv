@@ -1,7 +1,4 @@
 import argparse
-from word2pptx import Word2PPTX
-from text2speech import Text2Speech
-from ppt2video import PPT2Video
 
 def main():
     parser = argparse.ArgumentParser(
@@ -44,15 +41,21 @@ def main():
 
     # 根据命令执行相应逻辑
     if args.command == "word2ppt":
+        from word2pptx import Word2PPTX
         converter = Word2PPTX(args.word, args.ppt, args.template, args.max_leaf_count)
         converter.convert()
     elif args.command == "tts":
+        from text2speech import Text2Speech
         converter = Text2Speech(args.ppt, args.lang)
         converter.convert()
     elif args.command == "ppt2video":
+        from ppt2video import PPT2Video
         converter = PPT2Video(args.ppt, args.video)
         converter.convert()
     elif args.command == "all":
+        from word2pptx import Word2PPTX
+        from text2speech import Text2Speech
+        from ppt2video import PPT2Video
         word2ppt = Word2PPTX(args.word, args.ppt, args.template, args.max_leaf_count)
         word2ppt.convert()
         tts = Text2Speech(args.ppt, args.lang)

@@ -12,6 +12,7 @@ class PPT2Video:
         self.video_file = video_file
         self.prs = Presentation(ppt_file)
         self.default_duration = 2  # 默认无声视频时长（秒）
+        self.resolution = (1920, 1080)  # 1080p 分辨率
         
         # 从 config.yaml 读取音频目录
         with open(config_file, 'r', encoding='utf-8') as f:
@@ -55,7 +56,7 @@ class PPT2Video:
         return f"{start_str} --> {end_str}"
 
     def convert(self):
-        """将PPT和音频合成为视频，并生成字幕文件"""
+        """将PPT和音频合成为1080p视频，并生成字幕文件"""
         slide_images = self.export_slides_to_images()
         
         if len(slide_images) != len(self.prs.slides):
@@ -72,7 +73,7 @@ class PPT2Video:
             
             # 第一页特殊处理：2秒无声视频
             if i == 0:
-                clip = ImageClip(img_file, duration=self.default_duration)
+                clip = ImageClip(img_file, duration=self.default_duration).resized(width=self.resolution[0], height=self.resolution[1])
                 clips.append(clip)
                 print(f"  Created 2-second silent clip for slide {i}, start: {total_time:.2f}s, end: {total_time + self.default_duration:.2f}s")
                 total_time += self.default_duration
@@ -94,7 +95,7 @@ class PPT2Video:
                 return
             
             if not text_files:  # 无文本和音频
-                clip = ImageClip(img_file, duration=self.default_duration)
+                clip = ImageClip(img_file, duration=self.default_duration).resized(width=self.resolution[0], height=self.resolution[1])
                 clips.append(clip)
                 print(f"  Created 2-second silent clip for slide {i}, start: {total_time:.2f}s, end: {total_time + self.default_duration:.2f}s")
                 total_time += self.default_duration
@@ -103,8 +104,8 @@ class PPT2Video:
                 total_duration = sum(ac.duration for ac in audio_clips)
                 combined_audio = concatenate_audioclips(audio_clips)
                 
-                clip = ImageClip(img_file, duration=total_duration)
-                clip = clip.with_audio(combined_audio)  # 使用 with_audio 替换 set_audio
+                clip = ImageClip(img_file, duration=total_duration).resized(width=self.resolution[0], height=self.resolution[1])
+                clip = clip.with_audio(combined_audio)
                 clips.append(clip)
                 print(f"  Created clip for slide {i} with audio, total duration {total_duration:.2f} seconds, start: {total_time:.2f}s, end: {total_time + total_duration:.2f}s")
                 
@@ -124,10 +125,16 @@ class PPT2Video:
         
         if clips:
             final_video = concatenate_videoclips(clips)
-            final_video.write_videofile(self.video_file, fps=24)
-            print(f"Video saved as {self.video_file}")
+            final_video.write_videofile(
+                self.video_file,
+                fps=24,
+                codec="libx264",
+                bitrate="5000k",
+                preset="medium",
+                audio_codec="aac"
+            )
+            print(f"Video saved as {self.video_file} (1080p)")
             
-            # 生成字幕文件
             srt_file = os.path.join(self.audio_dir, os.path.splitext(os.path.basename(self.video_file))[0] + ".srt")
             with open(srt_file, 'w', encoding='utf-8') as f:
                 f.write("".join(srt_entries))
