@@ -5,6 +5,16 @@ __pycache__/
 
 audio/
 tmp/
+temp_slides/
+tests/
+*.pptx
+*.ppt
+*.doc
+*.docx
+*.mp4
+tts/*.txt
+tts/*.wav
+
 
 # C extensions
 *.so

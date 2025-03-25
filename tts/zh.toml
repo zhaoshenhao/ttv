@@ -1,0 +1,10 @@
+model = "F5TTS_v1_Base"
+ref_audio = "tts/F5TTS_zh.wav"
+ref_text = "这周天不算太冷，最低大概零下十度。"
+gen_text = ""
+gen_file = ""
+remove_silence = true
+output_dir = "audio"
+speed = 1.0
+vocoder_name = "vocos"
+target_rms = 0.1
