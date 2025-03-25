@@ -1,0 +1,10 @@
+model = "F5TTS_v1_Base"
+ref_audio = "tts/F5TTS_en.wav"
+ref_text = "Some call me nature, others call me mother nature."
+gen_text = ""
+gen_file = ""
+remove_silence = true
+output_dir = "audio"
+speed = 1.0
+vocoder_name = "vocos"
+target_rms = 0.1
